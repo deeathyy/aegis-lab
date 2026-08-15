@@ -6,3 +6,14 @@ contextBridge.exposeInMainWorld('dotaApi', {
   getMatchups: (heroId) => ipcRenderer.invoke('dota:getMatchups', heroId),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
 });
+
+contextBridge.exposeInMainWorld('appUpdater', {
+  getState: () => ipcRenderer.invoke('app:getUpdateState'),
+  check: () => ipcRenderer.invoke('app:checkForUpdates'),
+  install: () => ipcRenderer.invoke('app:installUpdate'),
+  onState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('app:update-state', listener);
+    return () => ipcRenderer.removeListener('app:update-state', listener);
+  },
+});

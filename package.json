@@ -1,20 +1,30 @@
 {
   "name": "aegis-lab",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "description": "Dota 2 desktop companion with hero stats and builds",
+  "author": "deeathyy",
+  "homepage": "https://github.com/deeathyy/aegis-lab",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/deeathyy/aegis-lab.git"
+  },
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && electron .\"",
     "build": "tsc -b && vite build",
-    "dist:win": "npm run build && electron-builder --win portable",
+    "dist:win": "npm run icon:render && npm run build && electron-builder --win nsis portable",
+    "dist:installer": "npm run icon:render && npm run build && electron-builder --win nsis",
+    "dist:portable": "npm run icon:render && npm run build && electron-builder --win portable",
+    "icon:render": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/render-icon.ps1",
     "preview": "vite preview",
     "start": "electron .",
     "typecheck": "tsc -b --pretty"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "electron-updater": "^6.8.9",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest"
@@ -38,11 +48,53 @@
       "electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      }
+    ],
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "deeathyy",
+        "repo": "aegis-lab",
+        "releaseType": "release"
+      }
+    ],
     "win": {
-      "target": "portable",
+      "icon": "build/icon.png",
+      "electronUpdaterCompatibility": ">= 2.16",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "artifactName": "Aegis-Lab-Setup-${version}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Aegis Lab",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
       "artifactName": "Aegis-Lab-${version}-portable.${ext}"
     }
   }
