@@ -1,9 +1,107 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('node:path');
 
 const API_ROOT = 'https://api.opendota.com/api';
 const STEAM_CDN = 'https://cdn.cloudflare.steamstatic.com';
 const cache = new Map();
+const UPDATE_INTERVAL = 6 * 60 * 60 * 1000;
+const isPortable = Boolean(process.env.PORTABLE_EXECUTABLE_FILE || process.env.PORTABLE_EXECUTABLE_DIR);
+let updateState = {
+  status: 'idle',
+  currentVersion: app.getVersion(),
+  availableVersion: null,
+  percent: null,
+  message: 'Готово к проверке обновлений',
+};
+
+function publishUpdateState(patch) {
+  updateState = { ...updateState, ...patch };
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send('app:update-state', updateState);
+  }
+  return updateState;
+}
+
+function updateErrorMessage(error) {
+  const raw = error instanceof Error ? error.message : String(error || 'Неизвестная ошибка');
+  if (/404|latest\.yml/i.test(raw)) return 'Для этой версии пока нет канала обновлений';
+  if (/net::|ENOTFOUND|ECONN/i.test(raw)) return 'Нет соединения с сервером обновлений';
+  return 'Не удалось проверить обновления';
+}
+
+async function checkForUpdates() {
+  if (!app.isPackaged || process.platform !== 'win32' || isPortable) {
+    return publishUpdateState({
+      status: 'disabled',
+      message: isPortable
+        ? 'Автообновление доступно в установленной версии'
+        : 'Проверка обновлений доступна после установки приложения',
+    });
+  }
+
+  publishUpdateState({ status: 'checking', percent: null, message: 'Проверяем GitHub Releases…' });
+  try {
+    await autoUpdater.checkForUpdates();
+  } catch (error) {
+    publishUpdateState({ status: 'error', message: updateErrorMessage(error), percent: null });
+  }
+  return updateState;
+}
+
+function configureAutoUpdater() {
+  if (!app.isPackaged || process.platform !== 'win32' || isPortable) {
+    checkForUpdates();
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = false;
+
+  autoUpdater.on('checking-for-update', () => {
+    publishUpdateState({ status: 'checking', percent: null, message: 'Проверяем GitHub Releases…' });
+  });
+  autoUpdater.on('update-available', (info) => {
+    publishUpdateState({
+      status: 'available',
+      availableVersion: info.version,
+      percent: 0,
+      message: `Найдена версия ${info.version}. Начинаем загрузку…`,
+    });
+  });
+  autoUpdater.on('update-not-available', () => {
+    publishUpdateState({
+      status: 'up-to-date',
+      availableVersion: null,
+      percent: null,
+      message: `Установлена актуальная версия ${app.getVersion()}`,
+    });
+  });
+  autoUpdater.on('download-progress', (progress) => {
+    const percent = Math.max(0, Math.min(100, Math.round(progress.percent || 0)));
+    publishUpdateState({
+      status: 'downloading',
+      percent,
+      message: `Загружаем обновление… ${percent}%`,
+    });
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    publishUpdateState({
+      status: 'downloaded',
+      availableVersion: info.version,
+      percent: 100,
+      message: `Версия ${info.version} готова к установке`,
+    });
+  });
+  autoUpdater.on('error', (error) => {
+    publishUpdateState({ status: 'error', percent: null, message: updateErrorMessage(error) });
+  });
+
+  setTimeout(checkForUpdates, 5000);
+  const timer = setInterval(checkForUpdates, UPDATE_INTERVAL);
+  timer.unref();
+}
 
 function cdnUrl(value) {
   if (!value) return '';
@@ -15,7 +113,7 @@ async function getJson(endpoint, ttl = 10 * 60 * 1000) {
   if (cached && Date.now() - cached.savedAt < ttl) return cached.data;
 
   const response = await fetch(`${API_ROOT}${endpoint}`, {
-    headers: { 'User-Agent': 'AegisLab/0.3 (desktop companion)' },
+    headers: { 'User-Agent': `AegisLab/${app.getVersion()} (desktop companion)` },
   });
   if (!response.ok) throw new Error(`OpenDota вернул ${response.status}`);
   const data = await response.json();
@@ -123,6 +221,14 @@ ipcMain.handle('app:openExternal', (_event, url) => {
   if (['https:', 'http:'].includes(parsed.protocol)) shell.openExternal(parsed.toString());
 });
 
+ipcMain.handle('app:getUpdateState', () => updateState);
+ipcMain.handle('app:checkForUpdates', () => checkForUpdates());
+ipcMain.handle('app:installUpdate', () => {
+  if (updateState.status !== 'downloaded') return false;
+  setImmediate(() => autoUpdater.quitAndInstall(false, true));
+  return true;
+});
+
 function createWindow() {
   const window = new BrowserWindow({
     width: 1440,
@@ -130,6 +236,9 @@ function createWindow() {
     minWidth: 1080,
     minHeight: 720,
     backgroundColor: '#090a0f',
+    icon: app.isPackaged
+      ? path.join(process.resourcesPath, 'icon.png')
+      : path.join(__dirname, '..', 'build', 'icon.png'),
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#090a0f', symbolColor: '#8a8f9f', height: 44 },
     webPreferences: {
@@ -142,6 +251,10 @@ function createWindow() {
   if (!app.isPackaged) window.loadURL('http://127.0.0.1:5173');
   else window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 
+  window.webContents.on('did-finish-load', () => {
+    window.webContents.send('app:update-state', updateState);
+  });
+
   window.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
@@ -150,6 +263,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
+  configureAutoUpdater();
   app.on('activate', () => BrowserWindow.getAllWindows().length === 0 && createWindow());
 });
 

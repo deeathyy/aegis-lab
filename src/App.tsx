@@ -3,7 +3,6 @@ import {
   Activity,
   BarChart3,
   BookOpen,
-  ChevronDown,
   CircleAlert,
   Clock3,
   Crown,
@@ -12,12 +11,11 @@ import {
   Gamepad2,
   Gem,
   LoaderCircle,
-  Menu,
   RefreshCw,
   Search,
+  Settings as SettingsIcon,
   ShieldCheck,
   Sparkles,
-  Swords,
   TrendingUp,
   Trophy,
   Users,
@@ -26,6 +24,12 @@ import { dotaApi } from './api';
 import type { BuildPhase, Hero, Matchup } from './types';
 import MetaPage from './MetaPage';
 import { BuildPanel, MatchupsPanel, OverviewPanel } from './HeroDetailPanels';
+import UpdateControl from './UpdateControl';
+import KnowledgeBasePage from './KnowledgeBasePage';
+import aegisLogo from '../build/icon.svg';
+import SettingsModal from './SettingsModal';
+import { applySettings, loadSettings } from './settings';
+import type { AppPage } from './settings';
 
 const ATTR_LABELS: Record<string, string> = {
   str: 'Сила',
@@ -133,7 +137,7 @@ function HeroSearch({ heroes, selected, onSelect }: { heroes: Hero[]; selected: 
 function Skeleton() {
   return (
     <main className="loading-screen">
-      <div className="brand-mark"><Swords size={24} /></div>
+      <div className="brand-mark"><img src={aegisLogo} alt="" /></div>
       <LoaderCircle className="spin" size={34} />
       <strong>Загружаем мету Dota 2</strong>
       <span>Получаем героев и статистику из OpenDota</span>
@@ -142,6 +146,8 @@ function Skeleton() {
 }
 
 export default function App() {
+  const [settings, setSettings] = useState(loadSettings);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [heroes, setHeroes] = useState<Hero[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [phases, setPhases] = useState<BuildPhase[]>([]);
@@ -151,7 +157,11 @@ export default function App() {
   const [matchupsLoading, setMatchupsLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'builds' | 'matchups'>('overview');
-  const [page, setPage] = useState<'heroes' | 'meta'>('heroes');
+  const [page, setPage] = useState<AppPage>(settings.startPage);
+
+  useEffect(() => {
+    applySettings(settings);
+  }, [settings]);
 
   const loadHeroes = async () => {
     setLoading(true);
@@ -224,27 +234,25 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header">
         <div className="brand">
-          <div className="brand-mark"><Swords size={20} /></div>
+          <div className="brand-mark"><img src={aegisLogo} alt="" /></div>
           <span><strong>AEGIS</strong> LAB</span>
-          <em>V3</em>
+          <em>V5</em>
         </div>
         <nav>
           <button className={page === 'heroes' ? 'active' : ''} onClick={() => setPage('heroes')}><Gamepad2 size={17} /> Герои</button>
           <button className={page === 'meta' ? 'active' : ''} onClick={() => setPage('meta')}><BarChart3 size={17} /> Мета</button>
           <button><Trophy size={17} /> Матчи</button>
-          <button><BookOpen size={17} /> База знаний</button>
+          <button className={page === 'knowledge' ? 'active' : ''} onClick={() => setPage('knowledge')}><BookOpen size={17} /> База знаний</button>
         </nav>
-        <button className="patch-button">
-          <span className="status-dot" /> Данные актуальны <ChevronDown size={14} />
-        </button>
+        <UpdateControl />
       </header>
 
       <div className="toolbar">
         <div className="breadcrumbs">
-          <span>{page === 'meta' ? 'Аналитика' : 'Герои'}</span><b>/</b><strong>{page === 'meta' ? 'Мета' : selected.name}</strong>
+          <span>{page === 'meta' ? 'Аналитика' : page === 'knowledge' ? 'Обучение' : 'Герои'}</span><b>/</b><strong>{page === 'meta' ? 'Мета' : page === 'knowledge' ? 'База знаний' : selected.name}</strong>
         </div>
         <HeroSearch heroes={heroes} selected={selected} onSelect={(hero) => { setSelectedId(hero.id); setPage('heroes'); }} />
-        <button className="menu-button" aria-label="Меню"><Menu size={20} /></button>
+        <button className="menu-button" aria-label="Настройки" title="Настройки" onClick={() => setSettingsOpen(true)}><SettingsIcon size={19} /></button>
       </div>
 
       {page === 'heroes' ? <main className="content">
@@ -391,13 +399,13 @@ export default function App() {
               </button>
               <button onClick={() => dotaApi.openExternal('https://liquipedia.net/dota2game/Main_Page')}>
                 <span className="source-logo wiki">W</span>
-                <span><b>Dota 2 Wiki</b><small>Справочник · запланирован</small></span>
+                <span><b>Dota 2 Wiki</b><small>Механики и справочник</small></span>
                 <ExternalLink size={14} />
               </button>
             </section>
           </aside>
         </div>
-      </main> : (
+      </main> : page === 'meta' ? (
         <MetaPage
           heroes={heroes}
           onSelect={(hero) => {
@@ -406,7 +414,11 @@ export default function App() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
         />
+      ) : (
+        <KnowledgeBasePage />
       )}
+
+      {settingsOpen && <SettingsModal settings={settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} />}
 
       <footer>
         <span>Aegis Lab не связан с Valve Corporation. Dota 2 — товарный знак Valve.</span>

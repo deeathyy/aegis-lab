@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="72" y1="40" x2="440" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#162231"/>
+      <stop offset="1" stop-color="#070A0F"/>
+    </linearGradient>
+    <linearGradient id="aegis" x1="148" y1="116" x2="363" y2="406" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#49E2FF"/>
+      <stop offset="0.52" stop-color="#1999F3"/>
+      <stop offset="1" stop-color="#1355CA"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="14" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect x="12" y="12" width="488" height="488" rx="116" fill="url(#bg)" stroke="#26394F" stroke-width="16"/>
+  <path d="M256 90 392 145v104c0 91-51 149-136 183-85-34-136-92-136-183V145L256 90Z" fill="url(#aegis)" opacity=".2" stroke="url(#aegis)" stroke-width="18" filter="url(#glow)"/>
+  <path d="m174 168 41 14 122 153-20 20-153-122-14-41 24-24Z" fill="#EAFBFF"/>
+  <path d="m338 168-41 14-122 153 20 20 153-122 14-41-24-24Z" fill="#EAFBFF"/>
+  <path d="m151 337 24-3 19 19-4 27-27 4-19-19 7-28Z" fill="#38CFF7"/>
+  <path d="m361 337-24-3-19 19 4 27 27 4 19-19-7-28Z" fill="#38CFF7"/>
+  <circle cx="256" cy="256" r="34" fill="#0D1723" stroke="#77EAFF" stroke-width="12"/>
+</svg>

@@ -44,6 +44,24 @@ export type Matchup = {
   wins: number;
 };
 
+export type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'up-to-date'
+  | 'error'
+  | 'disabled';
+
+export type UpdateState = {
+  status: UpdateStatus;
+  currentVersion: string;
+  availableVersion: string | null;
+  percent: number | null;
+  message: string;
+};
+
 declare global {
   interface Window {
     dotaApi?: {
@@ -51,6 +69,12 @@ declare global {
       getBuild: (heroId: number) => Promise<BuildPhase[]>;
       getMatchups: (heroId: number) => Promise<Matchup[]>;
       openExternal: (url: string) => Promise<void>;
+    };
+    appUpdater?: {
+      getState: () => Promise<UpdateState>;
+      check: () => Promise<UpdateState>;
+      install: () => Promise<boolean>;
+      onState: (callback: (state: UpdateState) => void) => () => void;
     };
   }
 }

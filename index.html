@@ -7,6 +7,15 @@
     <title>Aegis Lab — Dota 2 Companion</title>
   </head>
   <body>
+    <script>
+      try {
+        const settings = JSON.parse(localStorage.getItem('aegis-lab:settings') || '{}');
+        document.documentElement.dataset.theme = settings.theme === 'light' ? 'light' : 'dark';
+        document.documentElement.dataset.density = settings.density === 'compact' ? 'compact' : 'comfortable';
+        document.documentElement.dataset.motion = settings.reduceMotion ? 'reduced' : 'full';
+        document.documentElement.style.colorScheme = document.documentElement.dataset.theme;
+      } catch {}
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
