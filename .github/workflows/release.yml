@@ -28,10 +28,27 @@ jobs:
       - name: Check TypeScript
         run: npm run typecheck
 
-      - name: Build and publish Windows release
+      - name: Build Windows release
         run: |
           npm run icon:render
           npm run build
-          npx electron-builder --win nsis portable --publish always
+          npx electron-builder --win nsis portable --publish never
+
+      - name: Publish release files
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = "v$version"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --title $version --generate-notes
+          }
+          gh release upload $tag `
+            "release/Aegis-Lab-Setup-$version.exe" `
+            "release/Aegis-Lab-Setup-$version.exe.blockmap" `
+            "release/Aegis-Lab-$version-portable.exe" `
+            "release/latest.yml" `
+            --clobber `
+            --repo $env:GITHUB_REPOSITORY
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
