@@ -14,6 +14,12 @@
         document.documentElement.dataset.density = settings.density === 'compact' ? 'compact' : 'comfortable';
         document.documentElement.dataset.motion = settings.reduceMotion ? 'reduced' : 'full';
         document.documentElement.style.colorScheme = document.documentElement.dataset.theme;
+        const savedScale = [1, 1.15, 1.3, 1.45].includes(settings.uiScale) ? settings.uiScale : 1.3;
+        if (window.appDisplay) {
+          window.appDisplay.setZoomFactor(savedScale);
+        } else {
+          document.documentElement.style.zoom = String(savedScale);
+        }
       } catch {}
     </script>
     <div id="root"></div>

@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   BarChart3,
@@ -22,14 +22,16 @@ import {
 } from 'lucide-react';
 import { dotaApi } from './api';
 import type { BuildPhase, Hero, Matchup } from './types';
-import MetaPage from './MetaPage';
 import { BuildPanel, MatchupsPanel, OverviewPanel } from './HeroDetailPanels';
 import UpdateControl from './UpdateControl';
-import KnowledgeBasePage from './KnowledgeBasePage';
 import aegisLogo from '../build/icon.svg';
-import SettingsModal from './SettingsModal';
 import { applySettings, loadSettings } from './settings';
 import type { AppPage } from './settings';
+
+const MetaPage = lazy(() => import('./MetaPage'));
+const KnowledgeBasePage = lazy(() => import('./KnowledgeBasePage'));
+const SettingsModal = lazy(() => import('./SettingsModal'));
+const MatchesPage = lazy(() => import('./MatchesPage'));
 
 const ATTR_LABELS: Record<string, string> = {
   str: 'Сила',
@@ -45,8 +47,15 @@ const ATTR_ICONS: Record<string, string> = {
   all: '◆',
 };
 
-const formatNumber = (value: number) =>
-  new Intl.NumberFormat('ru-RU', { notation: value > 9999 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value);
+const compactNumberFormatter = new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 });
+const standardNumberFormatter = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 });
+const formatNumber = (value: number) => (value > 9999 ? compactNumberFormatter : standardNumberFormatter).format(value);
+
+function rememberLimited<T>(cache: Map<number, T>, key: number, value: T, limit = 12) {
+  cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > limit) cache.delete(cache.keys().next().value!);
+}
 
 function MetricCard({
   label,
@@ -119,7 +128,7 @@ function HeroSearch({ heroes, selected, onSelect }: { heroes: Hero[]; selected: 
                 setOpen(false);
               }}
             >
-              <img src={hero.icon || hero.image} alt="" />
+              <img src={hero.icon || hero.image} alt="" loading="lazy" decoding="async" />
               <span>
                 <strong>{hero.name}</strong>
                 <small>{hero.roles.slice(0, 2).join(' · ')}</small>
@@ -145,9 +154,14 @@ function Skeleton() {
   );
 }
 
+function SectionLoader() {
+  return <main className="loading-screen section-loader"><LoaderCircle className="spin" size={26} /><strong>Открываем раздел…</strong></main>;
+}
+
 export default function App() {
   const [settings, setSettings] = useState(loadSettings);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sourceRevision, setSourceRevision] = useState(0);
   const [heroes, setHeroes] = useState<Hero[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [phases, setPhases] = useState<BuildPhase[]>([]);
@@ -158,10 +172,21 @@ export default function App() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'builds' | 'matchups'>('overview');
   const [page, setPage] = useState<AppPage>(settings.startPage);
+  const buildCache = useRef(new Map<number, BuildPhase[]>());
+  const matchupCache = useRef(new Map<number, Matchup[]>());
 
   useEffect(() => {
     applySettings(settings);
   }, [settings]);
+
+  useEffect(() => {
+    const syncVisibility = () => {
+      document.documentElement.toggleAttribute('data-page-hidden', document.hidden);
+    };
+    syncVisibility();
+    document.addEventListener('visibilitychange', syncVisibility);
+    return () => document.removeEventListener('visibilitychange', syncVisibility);
+  }, []);
 
   const loadHeroes = async () => {
     setLoading(true);
@@ -182,27 +207,58 @@ export default function App() {
     loadHeroes();
   }, []);
 
-  const selected = heroes.find((hero) => hero.id === selectedId) || heroes[0];
+  const selected = useMemo(() => heroes.find((hero) => hero.id === selectedId) || heroes[0], [heroes, selectedId]);
+  const topHeroes = useMemo(() => [...heroes].sort((a, b) => b.winRate - a.winRate).slice(0, 5), [heroes]);
 
   useEffect(() => {
     if (!selected?.id) return;
     let cancelled = false;
+    const cached = buildCache.current.get(selected.id);
+    if (cached) {
+      setPhases(cached);
+      setBuildLoading(false);
+      return;
+    }
+    setPhases([]);
     setBuildLoading(true);
-    setMatchupsLoading(true);
     dotaApi
       .getBuild(selected.id)
-      .then((data) => !cancelled && setPhases(data))
+      .then((data) => {
+        if (cancelled) return;
+        rememberLimited(buildCache.current, selected.id, data);
+        setPhases(data);
+      })
       .catch(() => !cancelled && setPhases([]))
       .finally(() => !cancelled && setBuildLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id, sourceRevision]);
+
+  useEffect(() => {
+    if (!selected?.id || activeTab !== 'matchups') return;
+    let cancelled = false;
+    const cached = matchupCache.current.get(selected.id);
+    if (cached) {
+      setMatchups(cached);
+      setMatchupsLoading(false);
+      return;
+    }
+    setMatchups([]);
+    setMatchupsLoading(true);
     dotaApi
       .getMatchups(selected.id)
-      .then((data) => !cancelled && setMatchups(data))
+      .then((data) => {
+        if (cancelled) return;
+        rememberLimited(matchupCache.current, selected.id, data);
+        setMatchups(data);
+      })
       .catch(() => !cancelled && setMatchups([]))
       .finally(() => !cancelled && setMatchupsLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [selected?.id]);
+  }, [activeTab, selected?.id, sourceRevision]);
 
   useEffect(() => {
     const onShortcut = (event: KeyboardEvent) => {
@@ -228,20 +284,22 @@ export default function App() {
   }
 
   const proWinRate = selected.proPicks ? (selected.proWins / selected.proPicks) * 100 : 0;
-  const topHeroes = [...heroes].sort((a, b) => b.winRate - a.winRate).slice(0, 5);
-
+  const buildSource = phases[0]?.source || 'OpenDota';
+  const matchupSource = matchups[0]?.source || 'OpenDota';
+  const activeSource = activeTab === 'matchups' ? matchupSource : buildSource;
+  const activeSourceClass = activeSource.includes('STRATZ') ? 'stratz' : 'opendota';
   return (
     <div className="app-shell">
       <header className="app-header">
         <div className="brand">
           <div className="brand-mark"><img src={aegisLogo} alt="" /></div>
           <span><strong>AEGIS</strong> LAB</span>
-          <em>V5</em>
+          <em>V6</em>
         </div>
         <nav>
           <button className={page === 'heroes' ? 'active' : ''} onClick={() => setPage('heroes')}><Gamepad2 size={17} /> Герои</button>
           <button className={page === 'meta' ? 'active' : ''} onClick={() => setPage('meta')}><BarChart3 size={17} /> Мета</button>
-          <button><Trophy size={17} /> Матчи</button>
+          <button className={page === 'matches' ? 'active' : ''} onClick={() => setPage('matches')}><Trophy size={17} /> Матчи</button>
           <button className={page === 'knowledge' ? 'active' : ''} onClick={() => setPage('knowledge')}><BookOpen size={17} /> База знаний</button>
         </nav>
         <UpdateControl />
@@ -249,16 +307,19 @@ export default function App() {
 
       <div className="toolbar">
         <div className="breadcrumbs">
-          <span>{page === 'meta' ? 'Аналитика' : page === 'knowledge' ? 'Обучение' : 'Герои'}</span><b>/</b><strong>{page === 'meta' ? 'Мета' : page === 'knowledge' ? 'База знаний' : selected.name}</strong>
+          <span>{page === 'meta' ? 'Аналитика' : page === 'matches' ? 'Киберспорт' : page === 'knowledge' ? 'Обучение' : 'Герои'}</span><b>/</b><strong>{page === 'meta' ? 'Мета' : page === 'matches' ? 'Профессиональные матчи' : page === 'knowledge' ? 'База знаний' : selected.name}</strong>
         </div>
-        <HeroSearch heroes={heroes} selected={selected} onSelect={(hero) => { setSelectedId(hero.id); setPage('heroes'); }} />
+        {page === 'matches'
+          ? <div className="toolbar-pro-status"><span><i /> PRO DATA</span><b>OpenDota</b><small>матчи обновляются автоматически</small></div>
+          : <HeroSearch heroes={heroes} selected={selected} onSelect={(hero) => { setSelectedId(hero.id); setPage('heroes'); }} />}
         <button className="menu-button" aria-label="Настройки" title="Настройки" onClick={() => setSettingsOpen(true)}><SettingsIcon size={19} /></button>
       </div>
 
+      <Suspense fallback={<SectionLoader />}>
       {page === 'heroes' ? <main className="content">
         <section className="hero-overview">
           <div className="hero-portrait">
-            <img src={selected.image} alt={selected.name} />
+            <img src={selected.image} alt={selected.name} decoding="async" fetchPriority="high" />
             <div className="portrait-shade" />
             <span className={`attribute attr-${selected.primaryAttr}`}>{ATTR_ICONS[selected.primaryAttr]}</span>
             <div className="portrait-caption">
@@ -273,7 +334,7 @@ export default function App() {
                 <span className="eyebrow">ОБЗОР ГЕРОЯ</span>
                 <h2>{selected.name}</h2>
               </div>
-              <div className="source-badge"><ShieldCheck size={14} /> OpenDota</div>
+              <div className="source-badge"><ShieldCheck size={14} /> Характеристики · 1 уровень</div>
             </div>
             <div className="role-list">
               {selected.roles.slice(0, 4).map((role) => <span key={role}>{role}</span>)}
@@ -282,10 +343,16 @@ export default function App() {
               Актуальные показатели публичных и профессиональных матчей. Сборка ниже рассчитана по самым часто покупаемым предметам игроков на этом герое.
             </p>
             <div className="base-stats">
-              <span><Activity size={15} /> <b>{selected.baseHealth}</b> здоровья</span>
-              <span><Gem size={15} /> <b>{selected.baseMana}</b> маны</span>
-              <span><ShieldCheck size={15} /> <b>{selected.baseArmor.toFixed(1)}</b> брони</span>
-              <span><TrendingUp size={15} /> <b>{selected.moveSpeed}</b> скорость</span>
+              <span><Activity size={15} /> <b>{selected.baseHealth}</b><small>здоровье</small></span>
+              <span><Gem size={15} /> <b>{selected.baseMana}</b><small>мана</small></span>
+              <span><ShieldCheck size={15} /> <b>{selected.baseArmor.toFixed(1)}</b><small>броня</small></span>
+              <span><TrendingUp size={15} /> <b>{selected.moveSpeed}</b><small>скорость</small></span>
+            </div>
+            <div className="hero-attributes">
+              <span className="strength"><i>◆</i><small>СИЛА</small><b>{selected.baseStrength}</b><em>+{selected.strengthGain.toFixed(1)}</em></span>
+              <span className="agility"><i>▲</i><small>ЛОВКОСТЬ</small><b>{selected.baseAgility}</b><em>+{selected.agilityGain.toFixed(1)}</em></span>
+              <span className="intelligence"><i>●</i><small>ИНТЕЛЛЕКТ</small><b>{selected.baseIntelligence}</b><em>+{selected.intelligenceGain.toFixed(1)}</em></span>
+              <p>Начальное значение <b>на 1 уровне</b> · справа указан прирост за уровень</p>
             </div>
           </div>
         </section>
@@ -334,7 +401,7 @@ export default function App() {
                 <span className="eyebrow"><Sparkles size={13} /> {activeTab === 'matchups' ? 'АНАЛИТИКА СОПЕРНИКОВ' : 'РЕКОМЕНДОВАНО МЕТОЙ'}</span>
                 <h3>{activeTab === 'overview' ? 'План и ситуационные решения' : activeTab === 'builds' ? 'Предметы по стадиям' : 'Лучшие и худшие матчапы'}</h3>
               </div>
-              <div className="updated"><RefreshCw size={13} /> обновляется автоматически</div>
+              <div className="updated"><span className={`active-data-source ${activeSourceClass}`}>{activeSource}</span><RefreshCw size={13} /> обновляется автоматически</div>
             </div>
 
             {activeTab === 'overview' && <OverviewPanel hero={selected} phases={phases} loading={buildLoading} />}
@@ -352,9 +419,9 @@ export default function App() {
             <div className="data-note">
               <ShieldCheck size={15} />
               <span>
-                {activeTab === 'overview' && <><b>Как использовать обзор:</b> типовое ядро — безопасная основа, а ситуационные предметы выбираются после оценки вражеского драфта.</>}
-                {activeTab === 'builds' && <><b>Как читать сборку:</b> предметы отсортированы по частоте покупки внутри каждой стадии. Наведите курсор, чтобы увидеть стоимость и относительную популярность.</>}
-                {activeTab === 'matchups' && <><b>Источник матчапов:</b> агрегированные публичные матчи OpenDota. Переходы на D2PT и Dotabuff открывают дополнительные срезы в браузере.</>}
+                {activeTab === 'overview' && <><b>Как использовать обзор:</b> типовое ядро рассчитано по данным {buildSource}; ситуационные предметы выбираются после оценки вражеского драфта.</>}
+                {activeTab === 'builds' && <><b>Источник сборки — {buildSource}:</b> предметы отсортированы по частоте покупки внутри каждой стадии. STRATZ используется при подключённом токене, OpenDota — как резерв.</>}
+                {activeTab === 'matchups' && <><b>Источник матчапов — {matchupSource}:</b> малые выборки исключаются автоматически. STRATZ предоставляет расширенную агрегацию, OpenDota остаётся резервом.</>}
               </span>
             </div>
           </section>
@@ -369,7 +436,7 @@ export default function App() {
                 {topHeroes.map((hero, index) => (
                   <button key={hero.id} onClick={() => setSelectedId(hero.id)} className={hero.id === selected.id ? 'selected' : ''}>
                     <span className="leader-rank">{index + 1}</span>
-                    <img src={hero.icon || hero.image} alt="" />
+                    <img src={hero.icon || hero.image} alt="" loading="lazy" decoding="async" />
                     <span className="leader-name"><b>{hero.name}</b><small>{ATTR_LABELS[hero.primaryAttr]}</small></span>
                     <strong>{hero.winRate.toFixed(1)}%</strong>
                   </button>
@@ -390,6 +457,11 @@ export default function App() {
               <button onClick={() => dotaApi.openExternal(`https://dota2protracker.com/hero/${encodeURIComponent(selected.name)}`)}>
                 <span className="source-logo d2">D2</span>
                 <span><b>Dota 2 Pro Tracker</b><small>7000+ MMR · страница героя</small></span>
+                <ExternalLink size={14} />
+              </button>
+              <button onClick={() => dotaApi.openExternal(`https://stratz.com/heroes/${selected.id}-${selected.key.replaceAll('_', '-')}`)}>
+                <span className="source-logo st">SZ</span>
+                <span><b>STRATZ</b><small>GraphQL · предметы и матчапы</small></span>
                 <ExternalLink size={14} />
               </button>
               <button onClick={() => dotaApi.openExternal(`https://www.dotabuff.com/heroes/${selected.key.replaceAll('_', '-')}`)}>
@@ -414,15 +486,22 @@ export default function App() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}
         />
+      ) : page === 'matches' ? (
+        <MatchesPage heroes={heroes} />
       ) : (
         <KnowledgeBasePage />
       )}
+      </Suspense>
 
-      {settingsOpen && <SettingsModal settings={settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <Suspense fallback={null}><SettingsModal settings={settings} onChange={setSettings} onClose={() => setSettingsOpen(false)} onSourcesChanged={() => {
+        buildCache.current.clear();
+        matchupCache.current.clear();
+        setSourceRevision((value) => value + 1);
+      }} /></Suspense>}
 
       <footer>
         <span>Aegis Lab не связан с Valve Corporation. Dota 2 — товарный знак Valve.</span>
-        <span>Данные: OpenDota · Изображения: Valve / Dota 2 CDN</span>
+        <span>Данные: OpenDota + STRATZ (при подключении) · Изображения: Valve / Dota 2 CDN · Steam Profiles</span>
       </footer>
     </div>
   );

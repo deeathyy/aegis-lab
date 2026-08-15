@@ -80,7 +80,7 @@ function ItemTile({ item, rank }: { item: BuildItem; rank?: number }) {
   return (
     <div className="item">
       <div className="item-image-wrap">
-        <img src={item.image} alt={item.name} />
+        <img src={item.image} alt={item.name} loading="lazy" decoding="async" />
         {rank !== undefined && rank < 3 && <span className="item-rank">{rank + 1}</span>}
       </div>
       <div className="item-tooltip">
@@ -186,7 +186,7 @@ export function OverviewPanel({ hero, phases, loading }: { hero: Hero; phases: B
           <div className="situational-list">
             {situational.map((item) => (
               <article key={item.id}>
-                <img src={item.image} alt={item.name} />
+                <img src={item.image} alt={item.name} loading="lazy" decoding="async" />
                 <span><strong>{item.name}</strong><small>{situationFor(item)}</small></span>
                 <span className="situational-rate"><b>{item.popularity}%</b><i style={{ width: `${item.popularity}%` }} /></span>
               </article>
@@ -223,7 +223,7 @@ function MatchupColumn({
         {rows.map((row, index) => (
           <button key={row.heroId} onClick={() => onSelect(row.opponent)}>
             <span className="matchup-rank">{index + 1}</span>
-            <img src={row.opponent.icon || row.opponent.image} alt="" />
+            <img src={row.opponent.icon || row.opponent.image} alt="" loading="lazy" decoding="async" />
             <span className="matchup-name"><strong>{row.opponent.name}</strong><small>{row.opponent.roles.slice(0, 2).join(' · ')}</small></span>
             <span className="matchup-sample"><small>{row.gamesPlayed.toLocaleString('ru-RU')}</small><em>матчей</em></span>
             <span className="matchup-win"><b>{row.winRate.toFixed(1)}%</b><i /></span>
@@ -261,7 +261,6 @@ export function MatchupsPanel({
     }));
   const favorable = [...rows].sort((a, b) => b.winRate - a.winRate).slice(0, 6);
   const dangerous = [...rows].sort((a, b) => a.winRate - b.winRate).slice(0, 6);
-  const d2ptHero = encodeURIComponent(hero.name);
   const dotabuffHero = hero.key.replaceAll('_', '-');
 
   return (
@@ -276,8 +275,8 @@ export function MatchupsPanel({
       </div>
       <section className="provider-strip">
         <div className="provider-copy"><Sparkles size={18} /><span><strong>Проверить матчап глубже</strong><small>Профессиональная и публичная выборки в исходных сервисах</small></span></div>
-        <button onClick={() => dotaApi.openExternal(`https://dota2protracker.com/hero/${d2ptHero}`)}>
-          <span className="source-logo d2">D2</span><span><b>Dota 2 Pro Tracker</b><small>7000+ MMR и pro-матчи</small></span><ExternalLink size={15} />
+        <button onClick={() => dotaApi.openExternal(`https://stratz.com/heroes/${hero.id}-${dotabuffHero}`)}>
+          <span className="source-logo st">SZ</span><span><b>STRATZ</b><small>GraphQL-аналитика и IMP</small></span><ExternalLink size={15} />
         </button>
         <button onClick={() => dotaApi.openExternal(`https://www.dotabuff.com/heroes/${dotabuffHero}/counters`)}>
           <span className="source-logo db">DB</span><span><b>Dotabuff</b><small>Контрпики по рангам</small></span><ExternalLink size={15} />

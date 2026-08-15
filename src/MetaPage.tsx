@@ -39,8 +39,8 @@ const ROLE_LABELS: Record<string, string> = {
 
 type SortKey = 'rating' | 'winRate' | 'pickRate' | 'matches';
 
-const compact = (value: number) =>
-  new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+const compactFormatter = new Intl.NumberFormat('ru-RU', { notation: 'compact', maximumFractionDigits: 1 });
+const compact = (value: number) => compactFormatter.format(value);
 
 function getTier(hero: Hero) {
   if (hero.winRateRank <= 12) return 'S';
@@ -72,7 +72,7 @@ function SpotlightCard({
 }) {
   return (
     <button className="spotlight-card" onClick={() => onSelect(hero)}>
-      <img src={hero.image} alt="" />
+      <img src={hero.image} alt="" decoding="async" />
       <span className="spotlight-overlay" />
       <span className="spotlight-icon">{icon}</span>
       <span className="spotlight-content">
@@ -139,7 +139,7 @@ export default function MetaPage({ heroes, onSelect }: { heroes: Hero[]; onSelec
           <span className="orbit orbit-two" />
           <span className="radar-core"><Crosshair size={32} /></span>
           {meta.byWinRate.slice(0, 4).map((hero, index) => (
-            <img key={hero.id} className={`orbit-hero orbit-hero-${index + 1}`} src={hero.icon || hero.image} alt="" />
+            <img key={hero.id} className={`orbit-hero orbit-hero-${index + 1}`} src={hero.icon || hero.image} alt="" decoding="async" />
           ))}
         </div>
         <div className="meta-hero-stat">
@@ -212,7 +212,7 @@ export default function MetaPage({ heroes, onSelect }: { heroes: Hero[]; onSelec
                 <button className="meta-row" key={hero.id} onClick={() => onSelect(hero)}>
                   <span className="meta-rank">{index + 1}</span>
                   <span className="meta-name">
-                    <img src={hero.icon || hero.image} alt="" />
+                    <img src={hero.icon || hero.image} alt="" loading="lazy" decoding="async" />
                     <span><strong>{hero.name}</strong><small>{hero.roles.slice(0, 2).join(' · ')}</small></span>
                   </span>
                   <span className={`meta-attr attr-${hero.primaryAttr}`}>{ATTR_LABELS[hero.primaryAttr]}</span>
