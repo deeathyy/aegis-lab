@@ -1,6 +1,6 @@
 {
   "name": "aegis-lab",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "Dota 2 desktop companion with hero stats and builds",
@@ -20,7 +20,8 @@
     "icon:render": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/render-icon.ps1",
     "preview": "vite preview",
     "start": "electron .",
-    "typecheck": "tsc -b --pretty"
+    "typecheck": "tsc -b --pretty",
+    "validate:builds": "node scripts/validate-builds.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

@@ -35,6 +35,7 @@ export type BuildItem = {
   count: number;
   popularity: number;
   isUpgrade: boolean;
+  isComplete: boolean;
 };
 
 export type BuildPhase = {

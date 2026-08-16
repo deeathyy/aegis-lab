@@ -1,5 +1,4 @@
 import {
-  ArrowUpRight,
   CheckCircle2,
   Clock3,
   Crosshair,
@@ -20,12 +19,87 @@ import {
 import { dotaApi } from './api';
 import type { BuildItem, BuildPhase, Hero, Matchup } from './types';
 
-function uniqueItems(items: BuildItem[]) {
-  return [...new Map(items.map((item) => [item.id, item])).values()];
+type AnalyzedItem = BuildItem & {
+  timingScore: number;
+  phaseCounts: Record<string, number>;
+};
+
+const PHASE_TIMINGS: Record<string, number> = {
+  early_game_items: 12,
+  mid_game_items: 23,
+  late_game_items: 37,
+};
+
+function analyzeBuild(phases: BuildPhase[]) {
+  const aggregated = new Map<number, AnalyzedItem>();
+  for (const phase of phases) {
+    const timing = PHASE_TIMINGS[phase.key];
+    if (!timing) continue;
+    for (const item of phase.items) {
+      const current = aggregated.get(item.id) || {
+        ...item,
+        count: 0,
+        popularity: 0,
+        timingScore: 0,
+        phaseCounts: {},
+      };
+      const count = Number(item.count || 0);
+      current.count += count;
+      current.timingScore += count * timing;
+      current.phaseCounts[phase.key] = (current.phaseCounts[phase.key] || 0) + count;
+      aggregated.set(item.id, current);
+    }
+  }
+
+  const items = [...aggregated.values()].map((item) => ({
+    ...item,
+    timingScore: item.count ? item.timingScore / item.count : 99,
+  }));
+  const maxCount = Math.max(...items.filter(isOverviewItem).map((item) => item.count), 1);
+  return items.map((item) => ({
+    ...item,
+    popularity: Math.max(1, Math.round((item.count / maxCount) * 100)),
+  }));
 }
 
-function isFinishedItem(item: BuildItem) {
-  return item.isUpgrade || /blink dagger|aghanim's shard|aghanim's blessing|moon shard/i.test(item.name);
+function isOverviewItem(item: BuildItem) {
+  return item.isComplete && (item.cost >= 1200 || /boots|treads/i.test(item.name));
+}
+
+function timingLabel(score: number) {
+  if (score < 17) return 'ранний слот · до 15 мин';
+  if (score < 30) return 'основной слот · 15–30 мин';
+  return 'поздний слот · после 30 мин';
+}
+
+function purchaseOrderScore(item: AnalyzedItem) {
+  const name = item.name.toLowerCase();
+  let score = item.timingScore;
+  if (/boots|treads/.test(name)) score -= 1.5;
+  if (/hand of midas|battle fury|maelstrom|radiance/.test(name)) score -= 1;
+  if (/blink dagger/.test(name)) score -= 0.75;
+  if (/aghanim's shard/.test(name)) score += 1;
+  return score;
+}
+
+function selectCoreItems(items: AnalyzedItem[]) {
+  const ranked = items
+    .filter((item) => isOverviewItem(item) && !/vanguard|pipe of insight|lotus orb|linken's sphere|aeon disk|crimson guard/i.test(item.name))
+    .sort((a, b) => {
+      const aCoreCount = (a.phaseCounts.early_game_items || 0) + (a.phaseCounts.mid_game_items || 0);
+      const bCoreCount = (b.phaseCounts.early_game_items || 0) + (b.phaseCounts.mid_game_items || 0);
+      return bCoreCount - aCoreCount || b.count - a.count;
+    });
+  const selected: AnalyzedItem[] = [];
+  let hasFootwear = false;
+  for (const item of ranked) {
+    const footwear = /boots|treads/i.test(item.name);
+    if (footwear && hasFootwear) continue;
+    selected.push(item);
+    hasFootwear ||= footwear;
+    if (selected.length === 5) break;
+  }
+  return selected.sort((a, b) => purchaseOrderScore(a) - purchaseOrderScore(b) || b.count - a.count);
 }
 
 function situationFor(item: BuildItem) {
@@ -123,15 +197,14 @@ export function BuildPanel({ phases, loading }: { phases: BuildPhase[]; loading:
 export function OverviewPanel({ hero, phases, loading }: { hero: Hero; phases: BuildPhase[]; loading: boolean }) {
   if (loading) return <PanelLoading text="Формируем план игры…" />;
 
-  const early = phases.find((phase) => phase.key === 'early_game_items')?.items || [];
-  const middle = phases.find((phase) => phase.key === 'mid_game_items')?.items || [];
-  const late = phases.find((phase) => phase.key === 'late_game_items')?.items || [];
-  const core = uniqueItems([...middle, ...early])
-    .filter(isFinishedItem)
-    .slice(0, 5);
+  const analyzed = analyzeBuild(phases);
+  const core = selectCoreItems(analyzed);
   const coreIds = new Set(core.map((item) => item.id));
-  const situational = uniqueItems([...middle, ...late])
-    .filter((item) => isFinishedItem(item) && !coreIds.has(item.id))
+  const situationalPool = analyzed
+    .filter((item) => isOverviewItem(item) && !coreIds.has(item.id) && ((item.phaseCounts.mid_game_items || 0) + (item.phaseCounts.late_game_items || 0) > 0))
+    .sort((a, b) => b.count - a.count);
+  const situationalMax = Math.max(situationalPool[0]?.count || 0, 1);
+  const situational = situationalPool
     .slice(0, 8);
   const plan = gamePlan(hero);
   const metaVerdict = hero.winRate >= 52
@@ -162,15 +235,21 @@ export function OverviewPanel({ hero, phases, loading }: { hero: Hero; phases: B
         <section className="core-build-card">
           <div className="overview-section-title">
             <span><Layers3 size={17} /> Типовое ядро</span>
-            <small>самая частая основа</small>
+            <small>готовые предметы · по ожидаемому таймингу</small>
           </div>
           <div className="core-path">
             {core.map((item, index) => (
-              <div className="core-step" key={item.id}>
-                <ItemTile item={item} rank={index} />
-                {index < core.length - 1 && <ArrowUpRight size={14} />}
-              </div>
+              <article className="core-step" key={item.id}>
+                <span className="core-order">0{index + 1}</span>
+                <img src={item.image} alt={item.name} loading="lazy" decoding="async" />
+                <span className="core-item-copy">
+                  <small>{timingLabel(item.timingScore)}</small>
+                  <strong>{item.name}</strong>
+                  <em>{item.cost ? `${item.cost.toLocaleString('ru-RU')} золота` : 'особый предмет'}</em>
+                </span>
+              </article>
             ))}
+            {!core.length && <div className="overview-empty">Недостаточно данных для готового ядра</div>}
           </div>
           <div className="meta-verdict">
             <Gauge size={18} />
@@ -180,17 +259,22 @@ export function OverviewPanel({ hero, phases, loading }: { hero: Hero; phases: B
 
         <section className="situational-card">
           <div className="overview-section-title">
-            <span><ShieldAlert size={17} /> Ситуативные предметы</span>
-            <small>адаптируйте после драфта</small>
+            <span><ShieldAlert size={17} /> Ситуативные и альтернативные слоты</span>
+            <small>только готовые предметы · адаптируйте после драфта</small>
           </div>
           <div className="situational-list">
             {situational.map((item) => (
               <article key={item.id}>
-                <img src={item.image} alt={item.name} loading="lazy" decoding="async" />
+                <span className="situational-image"><img src={item.image} alt={item.name} loading="lazy" decoding="async" /></span>
                 <span><strong>{item.name}</strong><small>{situationFor(item)}</small></span>
-                <span className="situational-rate"><b>{item.popularity}%</b><i style={{ width: `${item.popularity}%` }} /></span>
+                <span className="situational-rate">
+                  <small>индекс частоты</small>
+                  <b>{Math.max(1, Math.round((item.count / situationalMax) * 100))}</b>
+                  <i style={{ width: `${Math.max(4, Math.round((item.count / situationalMax) * 100))}%` }} />
+                </span>
               </article>
             ))}
+            {!situational.length && <div className="overview-empty">Альтернативные готовые предметы не найдены</div>}
           </div>
         </section>
       </div>

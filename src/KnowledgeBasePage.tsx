@@ -9,7 +9,6 @@ import {
   Eye,
   GraduationCap,
   Map,
-  Search,
   ShieldCheck,
   Sparkles,
   Swords,
@@ -218,16 +217,24 @@ const GLOSSARY = [
   ['Tempo', 'Период, когда текущие уровни и предметы дают заметное преимущество.'],
 ];
 
-export default function KnowledgeBasePage() {
+export default function KnowledgeBasePage({
+  query,
+  onQueryChange,
+}: {
+  query: string;
+  onQueryChange: (value: string) => void;
+}) {
   const [category, setCategory] = useState<Category>('Все');
-  const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState(ARTICLES[0].id);
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('ru');
     return ARTICLES.filter((article) => {
       const inCategory = category === 'Все' || article.category === category;
-      const haystack = `${article.title} ${article.summary} ${article.category}`.toLocaleLowerCase('ru');
+      const sectionText = article.sections
+        .map((section) => `${section.title} ${section.body} ${section.bullets.join(' ')}`)
+        .join(' ');
+      const haystack = `${article.title} ${article.summary} ${article.category} ${article.keyIdea} ${sectionText}`.toLocaleLowerCase('ru');
       return inCategory && (!normalized || haystack.includes(normalized));
     });
   }, [category, query]);
@@ -262,11 +269,6 @@ export default function KnowledgeBasePage() {
 
       <section className="knowledge-workspace">
         <aside className="knowledge-sidebar">
-          <div className="knowledge-search">
-            <Search size={15} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти тему или термин…" />
-          </div>
-
           <div className="knowledge-categories">
             {CATEGORIES.map((item) => (
               <button key={item} className={category === item ? 'active' : ''} onClick={() => setCategory(item)}>
@@ -277,6 +279,7 @@ export default function KnowledgeBasePage() {
 
           <div className="knowledge-list">
             <span className="knowledge-list-caption">{filtered.length ? `Материалы · ${filtered.length}` : 'Ничего не найдено'}</span>
+            {query && <button className="knowledge-clear-search" onClick={() => onQueryChange('')}>Сбросить поиск</button>}
             {filtered.map((article) => {
               const Icon = article.icon;
               return (

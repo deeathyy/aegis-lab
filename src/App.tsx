@@ -154,6 +154,21 @@ function Skeleton() {
   );
 }
 
+function KnowledgeSearch({ query, onChange }: { query: string; onChange: (value: string) => void }) {
+  return (
+    <div className="hero-search knowledge-toolbar-search">
+      <Search size={18} />
+      <input
+        aria-label="Поиск по базе знаний"
+        value={query}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Найти тему, механику или термин…"
+      />
+      <kbd>⌘ K</kbd>
+    </div>
+  );
+}
+
 function SectionLoader() {
   return <main className="loading-screen section-loader"><LoaderCircle className="spin" size={26} /><strong>Открываем раздел…</strong></main>;
 }
@@ -172,6 +187,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'overview' | 'builds' | 'matchups'>('overview');
   const [page, setPage] = useState<AppPage>(settings.startPage);
+  const [knowledgeQuery, setKnowledgeQuery] = useState('');
   const buildCache = useRef(new Map<number, BuildPhase[]>());
   const matchupCache = useRef(new Map<number, Matchup[]>());
 
@@ -264,12 +280,13 @@ export default function App() {
     const onShortcut = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        document.querySelector<HTMLInputElement>('.hero-search input')?.focus();
+        if (page === 'heroes') document.querySelector<HTMLInputElement>('.hero-search input')?.focus();
+        if (page === 'knowledge') document.querySelector<HTMLInputElement>('.knowledge-toolbar-search input')?.focus();
       }
     };
     window.addEventListener('keydown', onShortcut);
     return () => window.removeEventListener('keydown', onShortcut);
-  }, []);
+  }, [page]);
 
   if (loading) return <Skeleton />;
   if (error || !selected) {
@@ -294,7 +311,7 @@ export default function App() {
         <div className="brand">
           <div className="brand-mark"><img src={aegisLogo} alt="" /></div>
           <span><strong>AEGIS</strong> LAB</span>
-          <em>V6</em>
+          <em>V7</em>
         </div>
         <nav>
           <button className={page === 'heroes' ? 'active' : ''} onClick={() => setPage('heroes')}><Gamepad2 size={17} /> Герои</button>
@@ -309,9 +326,10 @@ export default function App() {
         <div className="breadcrumbs">
           <span>{page === 'meta' ? 'Аналитика' : page === 'matches' ? 'Киберспорт' : page === 'knowledge' ? 'Обучение' : 'Герои'}</span><b>/</b><strong>{page === 'meta' ? 'Мета' : page === 'matches' ? 'Профессиональные матчи' : page === 'knowledge' ? 'База знаний' : selected.name}</strong>
         </div>
-        {page === 'matches'
-          ? <div className="toolbar-pro-status"><span><i /> PRO DATA</span><b>OpenDota</b><small>матчи обновляются автоматически</small></div>
-          : <HeroSearch heroes={heroes} selected={selected} onSelect={(hero) => { setSelectedId(hero.id); setPage('heroes'); }} />}
+        {page === 'heroes' && <HeroSearch heroes={heroes} selected={selected} onSelect={(hero) => setSelectedId(hero.id)} />}
+        {page === 'meta' && <div className="toolbar-pro-status"><span><i /> META DATA</span><b>OpenDota</b><small>статистика героев обновляется автоматически</small></div>}
+        {page === 'matches' && <div className="toolbar-pro-status"><span><i /> PRO DATA</span><b>OpenDota</b><small>матчи обновляются автоматически</small></div>}
+        {page === 'knowledge' && <KnowledgeSearch query={knowledgeQuery} onChange={setKnowledgeQuery} />}
         <button className="menu-button" aria-label="Настройки" title="Настройки" onClick={() => setSettingsOpen(true)}><SettingsIcon size={19} /></button>
       </div>
 
@@ -419,7 +437,7 @@ export default function App() {
             <div className="data-note">
               <ShieldCheck size={15} />
               <span>
-                {activeTab === 'overview' && <><b>Как использовать обзор:</b> типовое ядро рассчитано по данным {buildSource}; ситуационные предметы выбираются после оценки вражеского драфта.</>}
+                {activeTab === 'overview' && <><b>Как использовать обзор:</b> ядро содержит готовые предметы в ориентировочном порядке покупки по данным {buildSource}. Индекс 100 у альтернативы означает самый частый вариант внутри показанного списка, а не процент матчей.</>}
                 {activeTab === 'builds' && <><b>Источник сборки — {buildSource}:</b> предметы отсортированы по частоте покупки внутри каждой стадии. STRATZ используется при подключённом токене, OpenDota — как резерв.</>}
                 {activeTab === 'matchups' && <><b>Источник матчапов — {matchupSource}:</b> малые выборки исключаются автоматически. STRATZ предоставляет расширенную агрегацию, OpenDota остаётся резервом.</>}
               </span>
@@ -489,7 +507,7 @@ export default function App() {
       ) : page === 'matches' ? (
         <MatchesPage heroes={heroes} />
       ) : (
-        <KnowledgeBasePage />
+        <KnowledgeBasePage query={knowledgeQuery} onQueryChange={setKnowledgeQuery} />
       )}
       </Suspense>
 

@@ -79,10 +79,17 @@ async function browserBuild(heroId: number): Promise<BuildPhase[]> {
     cachedJson<Record<string, any>>(`${API_ROOT}/heroes/${heroId}/itemPopularity`, 30 * 60 * 1000),
     cachedJson<Record<string, any>>(`${API_ROOT}/constants/items`, 24 * 60 * 60 * 1000),
   ]);
+  const constantEntries = Object.entries(constants).filter(([, item]: [string, any]) => item && item.id);
+  const usedAsComponent = new Set<string>(
+    constantEntries.flatMap(([, item]: [string, any]) => Array.isArray(item.components) ? item.components : []),
+  );
+  const completeItemExceptions = new Set([
+    'blink', 'travel_boots', 'tranquil_boots', 'arcane_boots', 'ultimate_scepter', 'moon_shard', 'aghanims_shard',
+    'diffusal_blade', 'maelstrom', 'orchid', 'basher', 'vanguard', 'mekansm', 'dragon_lance', 'echo_sabre',
+    'witch_blade', 'phylactery', 'rod_of_atos', 'veil_of_discord', 'aether_lens',
+  ]);
   const itemsById = new Map<string, Record<string, any>>(
-    Object.values(constants)
-      .filter((item: any) => item && item.id)
-      .map((item: any) => [String(item.id), item]),
+    constantEntries.map(([key, item]: [string, any]) => [String(item.id), { ...item, key }]),
   );
   const phases = [
     ['start_game_items', 'Старт', '0:00'],
@@ -111,6 +118,7 @@ async function browserBuild(heroId: number): Promise<BuildPhase[]> {
           count: Number(value),
           popularity: Math.round((Number(value) / max) * 100),
           isUpgrade: Array.isArray(item.components) && item.components.length > 0,
+          isComplete: !usedAsComponent.has(item.key) || completeItemExceptions.has(item.key),
         };
       }),
     };

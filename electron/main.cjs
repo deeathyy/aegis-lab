@@ -291,11 +291,16 @@ function normalizeHero(hero) {
 }
 
 function normalizeItems(popularity, constants) {
-  const itemsById = new Map(
-    Object.values(constants)
-      .filter((item) => item && item.id)
-      .map((item) => [String(item.id), item]),
+  const constantEntries = Object.entries(constants).filter(([, item]) => item && item.id);
+  const usedAsComponent = new Set(
+    constantEntries.flatMap(([, item]) => Array.isArray(item.components) ? item.components : []),
   );
+  const completeItemExceptions = new Set([
+    'blink', 'travel_boots', 'tranquil_boots', 'arcane_boots', 'ultimate_scepter', 'moon_shard', 'aghanims_shard',
+    'diffusal_blade', 'maelstrom', 'orchid', 'basher', 'vanguard', 'mekansm', 'dragon_lance', 'echo_sabre',
+    'witch_blade', 'phylactery', 'rod_of_atos', 'veil_of_discord', 'aether_lens',
+  ]);
+  const itemsById = new Map(constantEntries.map(([key, item]) => [String(item.id), { ...item, key }]));
   const phases = [
     ['start_game_items', 'Старт', '0:00'],
     ['early_game_items', 'Ранняя игра', 'до 15 мин'],
@@ -325,6 +330,7 @@ function normalizeItems(popularity, constants) {
           count: Number(count),
           popularity: Math.round((Number(count) / max) * 100),
           isUpgrade: Array.isArray(item.components) && item.components.length > 0,
+          isComplete: !usedAsComponent.has(item.key) || completeItemExceptions.has(item.key),
         };
       }),
     };
@@ -332,11 +338,16 @@ function normalizeItems(popularity, constants) {
 }
 
 function normalizeStratzBuild(data, constants) {
-  const itemsById = new Map(
-    Object.values(constants)
-      .filter((item) => item?.id)
-      .map((item) => [Number(item.id), item]),
+  const constantEntries = Object.entries(constants).filter(([, item]) => item?.id);
+  const usedAsComponent = new Set(
+    constantEntries.flatMap(([, item]) => Array.isArray(item.components) ? item.components : []),
   );
+  const completeItemExceptions = new Set([
+    'blink', 'travel_boots', 'tranquil_boots', 'arcane_boots', 'ultimate_scepter', 'moon_shard', 'aghanims_shard',
+    'diffusal_blade', 'maelstrom', 'orchid', 'basher', 'vanguard', 'mekansm', 'dragon_lance', 'echo_sabre',
+    'witch_blade', 'phylactery', 'rod_of_atos', 'veil_of_discord', 'aether_lens',
+  ]);
+  const itemsById = new Map(constantEntries.map(([key, item]) => [Number(item.id), { ...item, key }]));
   const phases = [
     { key: 'start_game_items', title: 'Старт', timing: 'до выхода крипов', rows: new Map() },
     { key: 'early_game_items', title: 'Ранняя игра', timing: 'до 15 мин', rows: new Map() },
@@ -375,6 +386,7 @@ function normalizeStratzBuild(data, constants) {
           count: stats.count,
           popularity: Math.round((stats.count / max) * 100),
           isUpgrade: Array.isArray(item.components) && item.components.length > 0,
+          isComplete: !usedAsComponent.has(item.key) || completeItemExceptions.has(item.key),
         };
       }),
     };
