@@ -311,7 +311,7 @@ export default function App() {
         <div className="brand">
           <div className="brand-mark"><img src={aegisLogo} alt="" /></div>
           <span><strong>AEGIS</strong> LAB</span>
-          <em>V7</em>
+          <em>V8</em>
         </div>
         <nav>
           <button className={page === 'heroes' ? 'active' : ''} onClick={() => setPage('heroes')}><Gamepad2 size={17} /> Герои</button>

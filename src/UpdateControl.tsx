@@ -13,7 +13,7 @@ import type { UpdateState } from './types';
 
 const fallbackState: UpdateState = {
   status: 'disabled',
-  currentVersion: '0.7.0',
+  currentVersion: '0.8.0',
   availableVersion: null,
   percent: null,
   message: 'Проверка обновлений доступна в установленной версии',
